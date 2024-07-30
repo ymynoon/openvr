@@ -1,4 +1,5 @@
 //========= Copyright Valve Corporation ============//
+//YMY
 
 #include <SDL.h>
 #include <GL/glew.h>
