@@ -87,6 +87,7 @@ class CMainApplication {
   bool SetupTexturemaps();
 
   void SetupScene();
+  void SetupRect();
   void AddCubeToScene(Matrix4 mat, std::vector<float>& vertdata);
   void AddCubeVertex(float fl0, float fl1, float fl2, float fl3, float fl4,
                      std::vector<float>& vertdata);
@@ -181,7 +182,10 @@ class CMainApplication {
   unsigned int m_uiVertcount;
 
   GLuint m_glSceneVertBuffer;
+  GLuint m_glRectVertBuffer;
+  GLuint m_glRectElementBuffer;
   GLuint m_unSceneVAO;
+  GLuint m_RectVAO;
   GLuint m_unCompanionWindowVAO;
   GLuint m_glCompanionWindowIDVertBuffer;
   GLuint m_glCompanionWindowIDIndexBuffer;
@@ -213,11 +217,15 @@ class CMainApplication {
   };
 
   GLuint m_unSceneProgramID;
+  GLuint m_unCircleProgramID;
+  GLuint m_unRectProgramID;
   GLuint m_unCompanionWindowProgramID;
   GLuint m_unControllerTransformProgramID;
   GLuint m_unRenderModelProgramID;
 
   GLint m_nSceneMatrixLocation;
+  GLint m_nRectviewportSizeLocation;
+  GLint m_nCircleviewportSizeLocation;
   GLint m_nControllerMatrixLocation;
   GLint m_nRenderModelMatrixLocation;
 
@@ -580,6 +588,7 @@ bool CMainApplication::BInitGL() {
 
   SetupTexturemaps();
   SetupScene();
+  SetupRect();
   SetupCameras();
   SetupStereoRenderTargets();
   SetupCompanionWindow();
@@ -987,6 +996,177 @@ bool CMainApplication::CreateAllShaders() {
     return false;
   }
 
+  m_unCircleProgramID = CompileGLShader(
+      "Circle",
+
+      // Vertex Shader
+      "#version 410\n"
+
+      "layout(location = 0) in vec3 position;\n"
+      "layout(location = 1) in vec2 v2UVcoordsIn;\n"
+
+      "out vec2 v2UVcoords;\n"
+      "void main()\n"
+      "{\n"
+      "	v2UVcoords = v2UVcoordsIn;\n"
+      "	gl_Position =  vec4(position,1.0);\n"
+      "}\n",
+      // Fragment Shader
+      "#version  410 core\n"
+      "uniform vec2 viewportSize;\n"
+      "uniform  sampler2D mytexture;\n"
+      "in vec2 v2UVcoords;\n"
+      "out vec4 outputColor;\n"
+      "void main()\n"
+      "{\n"
+      "float dis_to_mid = distance(v2UVcoords, vec2(0.5, 0.5));\n"
+      "int dis = int(dis_to_mid * viewportSize.x);\n"
+
+      "if(v2UVcoords.x<0.5&&v2UVcoords.y<0.5){\n"
+      " if(dis % 2 == 0) { outputColor = vec4(1.0, 1.0, 1.0, 1.0); } \n"
+      " else {outputColor = vec4(0.0, 0.0, 0.0, 1.0);}\n"
+      "}\n"
+
+      "else if(v2UVcoords.x<0.5&&v2UVcoords.y>0.5){\n"
+      " if(dis % 4 == 0||dis % 4 == 1) { outputColor = vec4(1.0, 1.0, 1.0, "
+      "1.0); } \n"
+      " else {outputColor = vec4(0.0, 0.0, 0.0, 1.0);}\n"
+      "}\n"
+
+      "else if(v2UVcoords.x>0.5&&v2UVcoords.y>0.5){\n"
+      " if(dis % 8 == 0||dis % 8 == 1||dis % 8 == 2||dis % 8 == 3) { "
+      "outputColor = vec4(1.0, 1.0, 1.0, 1.0); } \n"
+      " else {outputColor = vec4(0.0, 0.0, 0.0, 1.0);}\n"
+      "}\n"
+
+      "else{\n"
+      " if(dis % 16 == 0||dis % 16 == 1||dis % 16 == 2||dis % 16 == 3||dis % "
+      "16 == 4||dis % 16 == 5||dis % 16 == 6||dis % 16 == 7) { outputColor = "
+      "vec4(1.0, 1.0, 1.0, 1.0); } \n"
+      " else {outputColor = vec4(0.0, 0.0, 0.0, 1.0);}\n"
+      "}\n"
+
+      //" outputColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
+      // "   outputColor = texture(mytexture, v2UVcoords);\n"
+      "}\n");
+  m_nCircleviewportSizeLocation =
+      glGetUniformLocation(m_unCircleProgramID, "viewportSize");
+  if (m_nCircleviewportSizeLocation == -1) {
+    dprintf("Unable to find m_unRectProgramID uniform in rect shader\n");
+    // return false;
+  }
+
+  m_unRectProgramID = CompileGLShader(
+      "Rect",
+
+      // Vertex Shader
+      "#version 410\n"
+
+      "layout(location = 0) in vec3 position;\n"
+      "layout(location = 1) in vec2 v2UVcoordsIn;\n"
+
+      "out vec2 v2UVcoords;\n"
+      "void main()\n"
+      "{\n"
+      "	v2UVcoords = v2UVcoordsIn;\n"
+      "	gl_Position =  vec4(position,1.0);\n"
+      "}\n",
+      // Fragment Shader
+      "#version  410 core\n"
+      "uniform vec2 viewportSize;\n"
+      "uniform  sampler2D mytexture;\n"
+      "in vec2 v2UVcoords;\n"
+      "out vec4 outputColor;\n"
+      "void main()\n"
+      "{\n"
+      "float dis_to_mid_y = distance(v2UVcoords, vec2(v2UVcoords.x,0.5));\n"
+      "float dis_to_mid_x = distance(v2UVcoords, vec2(0.5,v2UVcoords.y));\n"
+      "int dis_x = int(dis_to_mid_x * viewportSize.x);\n"
+      "int dis_y = int(dis_to_mid_y * viewportSize.y);\n"
+
+      // 1
+      "if(v2UVcoords.x<0.5&&v2UVcoords.y<0.5){\n"
+
+      "if(v2UVcoords.x > v2UVcoords.y) {\n"
+      "if (dis_y % 2 == 0) {\n"
+      "outputColor = vec4(1.0, 1.0, 1.0, 1.0);\n"
+      " } else {\n"
+      "outputColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
+      "}\n"
+      "} else {\n"
+      "if (dis_x % 2 == 0) {\n"
+      "outputColor = vec4(1.0, 1.0, 1.0, 1.0);\n"
+      "} else {\n"
+      "outputColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
+      " }\n"
+      "}\n"
+
+      "}\n"
+      // 2
+      "else if (v2UVcoords.x < 0.5 && v2UVcoords.y > 0.5) {\n"
+      "if (0.5-v2UVcoords.x > v2UVcoords.y - 0.5) {\n"
+      "if (dis_x % 4 == 0 || dis_x % 4 == 1) {\n"
+      "outputColor = vec4(1.0, 1.0, 1.0, 1.0);\n"
+
+      "} else {\n"
+      "outputColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
+      "}\n"
+      "} else {\n"
+      "if (dis_y % 4 == 0 || dis_y % 4 == 1) {\n"
+      "outputColor = vec4(1.0, 1.0, 1.0, 1.0);\n"
+      "} else {\n"
+      "outputColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
+      "}\n"
+      "}\n"
+      " }\n"
+      // 3
+      "else if (v2UVcoords.x > 0.5 && v2UVcoords.y > 0.5) {\n"
+      "if (v2UVcoords.y > v2UVcoords.x ) {\n"
+      "if (dis_y % 8 == 0 || dis_y % 8 == 1||dis_y % 8 == 2 || dis_y % 8 == 3) "
+      "{\n"
+      "outputColor = vec4(1.0, 1.0, 1.0, 1.0);\n"
+
+      "} else {\n"
+      "outputColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
+      "}\n"
+      "} else {\n"
+      "if (dis_x % 8 == 0 || dis_x % 8 == 1||dis_x % 8 == 2 || dis_x % 8 == 3) "
+      "{\n"
+      "outputColor = vec4(1.0, 1.0, 1.0, 1.0);\n"
+      "} else {\n"
+      "outputColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
+      "}\n"
+      "}\n"
+      " }\n"
+      // 4
+      "else{\n"
+
+      "if (v2UVcoords.y > 1.0-v2UVcoords.x ) {\n"
+      "if (dis_x % 16 < 8) \n"
+      "{\n"
+      "outputColor = vec4(1.0, 1.0, 1.0, 1.0);\n"
+
+      "} else {\n"
+      "outputColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
+      "}\n"
+      "} else {\n"
+      "if (dis_y % 16 <8) \n"
+      "{\n"
+      "outputColor = vec4(1.0, 1.0, 1.0, 1.0);\n"
+      "} else {\n"
+      "outputColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
+      "}\n"
+      "}\n"
+
+      "}\n"
+
+      "}\n");
+  m_nRectviewportSizeLocation =
+      glGetUniformLocation(m_unRectProgramID, "viewportSize");
+  if (m_nRectviewportSizeLocation == -1) {
+    dprintf("Unable to find m_unRectProgramID uniform in rect shader\n");
+    // return false;
+  }
   m_unControllerTransformProgramID =
       CompileGLShader("Controller",
 
@@ -1174,6 +1354,47 @@ void CMainApplication::SetupScene() {
   glDisableVertexAttribArray(1);
 }
 
+void CMainApplication::SetupRect() {
+  if (!m_pHMD) return;
+
+  std::vector<float> vertdataarray;
+
+  float vertices_[20] = {-1.0f, 1.0f,  0.0f, 0.0f, 1.0f,  //
+                         1.0f,  1.0f,  0.0f, 1.0f, 1.0f,  //
+                         1.0f,  -1.0f, 0.0f, 1.0f, 0.0f,  //
+                         -1.0f, -1.0f, 0.0f, 0.0f, 0.0f};
+
+  unsigned int indices_preview_2_[6] = {0, 2, 1, 0, 3, 2};
+
+  glGenBuffers(1, &m_glRectVertBuffer);
+  glBindBuffer(GL_ARRAY_BUFFER, m_glRectVertBuffer);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 20, &vertices_[0],
+               GL_STATIC_DRAW);
+
+  glGenBuffers(1, &m_glRectElementBuffer);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_glRectElementBuffer);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * 6,
+               &indices_preview_2_[0], GL_STATIC_DRAW);
+
+  glGenVertexArrays(1, &m_RectVAO);
+  glBindVertexArray(m_RectVAO);
+  glBindBuffer(GL_ARRAY_BUFFER, m_glRectVertBuffer);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_glRectElementBuffer);
+
+  GLsizei stride = sizeof(VertexDataScene);
+  uintptr_t offset = 0;
+
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (const void*)offset);
+
+  offset += sizeof(Vector3);
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (const void*)offset);
+
+  glBindVertexArray(0);
+  glDisableVertexAttribArray(0);
+  glDisableVertexAttribArray(1);
+}
 //-----------------------------------------------------------------------------
 // Purpose:
 //-----------------------------------------------------------------------------
@@ -1519,7 +1740,7 @@ void CMainApplication::RenderScene(vr::Hmd_Eye nEye) {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   glEnable(GL_DEPTH_TEST);
 
-  if (m_bShowCubes) {
+  /* if (m_bShowCubes) {
     glUseProgram(m_unSceneProgramID);
     glUniformMatrix4fv(m_nSceneMatrixLocation, 1, GL_FALSE,
                        GetCurrentViewProjectionMatrix(nEye).get());
@@ -1527,8 +1748,23 @@ void CMainApplication::RenderScene(vr::Hmd_Eye nEye) {
     glBindTexture(GL_TEXTURE_2D, m_iTexture);
     glDrawArrays(GL_TRIANGLES, 0, m_uiVertcount);
     glBindVertexArray(0);
-  }
+  } */
+  if (m_bShowCubes) {
+    // Circle mark
+    // glUseProgram(m_unCircleProgramID);
+    // glUniform2f(m_nCircleviewportSizeLocation, m_nRenderWidth,
+    // m_nRenderHeight);
 
+    // Rect Mark
+    glUseProgram(m_unRectProgramID);
+    glUniform2f(m_nRectviewportSizeLocation, m_nRenderWidth, m_nRenderHeight);
+
+    glBindVertexArray(m_RectVAO);
+    glBindTexture(GL_TEXTURE_2D, m_iTexture);
+
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+  }
   bool bIsInputAvailable = m_pHMD->IsInputAvailable();
 
   if (bIsInputAvailable) {
